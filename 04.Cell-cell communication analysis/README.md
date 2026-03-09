@@ -1,189 +1,229 @@
-Cross-Species Cell-Cell Communication and Co-evolution Analysis
+# Cross-Species Cell-Cell Communication and Co-evolution Analysis
 
 This README outlines the bioinformatics pipeline for performing cell-cell communication analysis across nine species (H=human, MA=macaque, M=mouse, SQ=tree shrew, D=dog, S=sheep, G=goat, Z=pig, W=sugar glider) and testing the escalation hypothesis of fetal-maternal co-evolution.
 
-Pipeline Overview
+## Pipeline Overview
 
 The workflow consists of two main modules:
-1. Cell-Cell Communication Analysis: Normalizes the cross-species data to human-equivalent orthogroups and identifies significant ligand-receptor interactions using CellPhoneDB v5.0.0.
-2. Statistical Analysis of Escalation: Calculates representative expression values for interacting pairs and utilizes Phylogenetically Independent Contrasts (PICs) to test for symmetric or asymmetric escalation across specific placental types.
 
-## Module1: Cell-Cell Communication Analysis
+1. **Cell-Cell Communication Analysis:** Normalizes the cross-species data to human-equivalent orthogroups and identifies significant ligand-receptor interactions using CellPhoneDB v5.0.0.
+2. **Statistical Analysis of Escalation:** Calculates representative expression values for interacting pairs and utilizes Phylogenetically Independent Contrasts (PICs) to test for symmetric or asymmetric escalation across specific placental types.
+
+## Module 1: Cell-Cell Communication Analysis
 
 To enable cross-species comparison, we first construct a unified gene expression matrix based on human genes as the reference, then format the data for CellPhoneDB.
 
-### Step1: Extract and Merge Cell Types
+### Step 1: Extract and Merge Cell Types
 To make the pipeline adaptable to any single-cell dataset, this step uses a configuration file ('config.csv') to define which files to load, which metadata column contains the annotations, and which specific clusters to extract.
 
-*Example: 'D_config.csv'*
-| object_name | file_path          | metadata_col  | keep_clusters         |
-|-------------|--------------------|---------------|-----------------------|
-| Tro         | data/D_Tro.rds     | cell_type3    | all                   |
-| Stromal     | data/D_Strom.rds   | cell_type_new | fS|dS1|dS2            |
-| Immune      | data/D_Immune.rds  | cell_type2    | HB|dM                 |
+**Example: 'D_config.csv'**
+```csv
+object_name,file_path,metadata_col,keep_clusters
+Tro,data/D_Tro.rds,cell_type3,all
+Stromal,data/D_Strom.rds,cell_type_new,fS|dS1|dS2
+Immune,data/D_Immune.rds,cell_type2,HB|dM
+```
 
+**Script:** `scripts/01_Merge_celltypes.r`
 
-Script: scripts/01_Merge_celltypes.r
+**Usage:**
+```bash
+# Run the script for each species
+Rscript 01_Merge_celltypes.r <config.csv> <Output_merged.rds>
+```
 
-Usage:
-    # Run the script for each species
-    Rscript 01_Merge_celltypes.r <config.csv> <Output_merged.rds>
-Example:
-    Rscript scripts/01_Merge_celltypes.r D_config.csv output/D_merged.rds
+**Example:**
+```bash
+Rscript scripts/01_Merge_celltypes.r D_config.csv output/D_merged.rds
+```
 
+### Step 2: Convert to Human Orthologs
+This script converts the species-specific genes in the merged Seurat object into human orthologs to allow for cross-species CellPhoneDB analysis.
 
+**Script:** `scripts/02_Convert_orthologs.r`
 
-### Step2: Convert to Human orthologs
-This script convert the species-specific genes in the merged Seurat object into human orthologs to allow for cross-species CellPhoneDB analysis.
+**Usage:**
+```bash
+# Run the script for each non-human species
+Rscript scripts/02_Convert_orthologs.r <input_merged.rds> <human_paralog.tsv> <species_paralog.tsv> <output_converted.rds>
+```
 
-Script: scripts/02_Convert_orthologs.r
+**Example:**
+```bash
+Rscript scripts/02_Convert_orthologs.r \
+  output/D_merged.rds \
+  data/human_paralog.tsv \
+  data/dog_paralog.tsv \
+  output/D_converted.rds
+```
 
-Usage:
-    # Run the script for each non-human species
-    Rscript scripts/02_Convert_orthologs.r <input_merged.rds> <human_paralog.tsv> <species_paralog.tsv> <output_converted.rds>
-Example:
-    Rscript scripts/02_Convert_orthologs.r \
-    output/D_merged.rds \
-    data/human_paralog.tsv \
-    data/dog_paralog.tsv \
-    output/D_converted.rds
-    
-Parameters:
-<input_merged.rds>: Path to the merged RDS file from Step1.
-<human_paralog.tsv>: Path to Orthofinder results for human paralogs.
-<species_paralog.tsv>: Path to Orthofinder results for the species' paralogs.
-<output_converted.rds>: Path to the output RDS file, which is a normalized Seurat object with aggregated counts mapped to human gene symbols.
+**Parameters:**
+- **`<input_merged.rds>`:** Path to the merged RDS file from Step 1
+- **`<human_paralog.tsv>`:** Path to Orthofinder results for human paralogs
+- **`<species_paralog.tsv>`:** Path to Orthofinder results for the species' paralogs
+- **`<output_converted.rds>`:** Path to the output RDS file, which is a normalized Seurat object with aggregated counts mapped to human gene symbols
 
-### Step3: Extract CellPhoneDB Input Files
+### Step 3: Extract CellPhoneDB Input Files
 Run the extraction script to generate counts and metadata text files required by CellPhoneDB from the converted Seurat object.
-Note: Our downstream escalation analysis (Step5) requires distinguishing Fetal from Maternal cells. We provide a simple CSV mapping file ('group_mapping.csv') with two columns: 'cell_type' and 'group' assigned as either 'Fetal' or 'Maternal'.
 
-*Example: 'group_mapping.csv':*
-| cell_type | group    |
-|-----------|----------|
-| EVT       | Fetal    |
-| HB        | Fetal    |
-| dS        | Maternal |
-| ...       | ...      |
+**Note:** Our downstream escalation analysis (Step 5) requires distinguishing Fetal from Maternal cells. We provide a simple CSV mapping file ('group_mapping.csv') with two columns: 'cell_type' and 'group' assigned as either 'Fetal' or 'Maternal'.
 
-Script: scripts/03_Extract_cpdb_input.r
+**Example: 'group_mapping.csv':**
+```csv
+cell_type,group
+EVT,Fetal
+HB,Fetal
+dS,Maternal
+...
+```
 
-Usage:
-    # Run the script for each species
-    Rscript 03_extract_cpdb_input.r <input.rds> <output_dir> <group_mapping.csv> <annotation_column>
-Example:
-    Rscript scripts/03_Extract_cpdb_input.r \
-    output/D_converted.rds \
-    output/cpdb_input/ \
-    data/D_group_map.csv \
-    cell_type_cpdb
+**Script:** `scripts/03_Extract_cpdb_input.r`
 
-Parameters:
-<input.rds>: Path to the converted RDS file from Step2.
-<output_dir>: A base name for the output files generated by this script(e.g., Dog_counts.txt).
-<group_mapping.csv>: A mapping file to distinguishing Fetal and Maternal cells.
-<annotation_column>: The specified anotation column name in <input.rds> for CellPhoneDB analysis (default: cell_type_cpdb).
+**Usage:**
+```bash
+# Run the script for each species
+Rscript 03_extract_cpdb_input.r <input.rds> <output_dir> <group_mapping.csv> <annotation_column>
+```
 
-Output Files:
+**Example:**
+```bash
+Rscript scripts/03_Extract_cpdb_input.r \
+  output/D_converted.rds \
+  output/cpdb_input/ \
+  data/D_group_map.csv \
+  cell_type_cpdb
+```
+
+**Parameters:**
+- **`<input.rds>`:** Path to the converted RDS file from Step 2
+- **`<output_dir>`:** A base name for the output files generated by this script (e.g., `Dog_counts.txt`)
+- **`<group_mapping.csv>`:** A mapping file to distinguishing Fetal and Maternal cells
+- **`<annotation_column>`:** The specified annotation column name in `<input.rds>` for CellPhoneDB analysis (default: `cell_type_cpdb`)
+
+**Output Files:**
 This script generates 2 files tailored for CellPhoneDB input:
-1. <output_prefix>_meta.txt: A metadata table containing the ID of each cell, its annotated cell type, and the manually mapped Fetal/Maternal group status(e.g.,D_meta.txt).
-2. <output_prefix>_counts.txt: A normalized gene expression matrix for statistical analysis(e.g. D_counts.txt).
 
-### Step4: Run CellPhoneDB
-Run the statistical analysis method of CellPhoneDB to identify significant interactions.Ligands and receptors expressed in >10% of cells are retained.
+1. **`<output_prefix>_meta.txt`:** A metadata table containing the ID of each cell, its annotated cell type, and the manually mapped Fetal/Maternal group status (e.g., `D_meta.txt`)
+2. **`<output_prefix>_counts.txt`:** A normalized gene expression matrix for statistical analysis (e.g., `D_counts.txt`)
 
-Script: scripts/04_Run_cpdb.py
+### Step 4: Run CellPhoneDB
+Run the statistical analysis method of CellPhoneDB to identify significant interactions. Ligands and receptors expressed in >10% of cells are retained.
 
-Usage:
-    # Run the script for each species
-    python 04_Run_cpdb.py <meta_file> <counts_file> <database.zip> <output_dir>
+**Script:** `scripts/04_Run_cpdb.py`
 
-Parameters:
-<meta_file>: Path to the metadata file from Step3.
-<counts_file>: Path to the gene expression data from Step3.
-<database.zip>: The newest CellphoneDB database, downloaded from https://github.com/ventolab/cellphonedb-data.
-<output_dir>: Path to the CellPhoneDB output results.
+**Usage:**
+```bash
+# Run the script for each species
+python 04_Run_cpdb.py <meta_file> <counts_file> <database.zip> <output_dir>
+```
 
-### Step5: Filter Conserved Ligand-Receptor Interactions
+**Parameters:**
+- **`<meta_file>`:** Path to the metadata file from Step 3
+- **`<counts_file>`:** Path to the gene expression data from Step 3
+- **`<database.zip>`:** The newest CellphoneDB database, downloaded from https://github.com/ventolab/cellphonedb-data
+- **`<output_dir>`:** Path to the CellPhoneDB output results
+
+### Step 5: Filter Conserved Ligand-Receptor Interactions
 After running CellPhoneDB for each species individually, this script filters the resulting p-values to identify conserved interactions. Interacting pairs are preserved only if they are consistently significant (p < 0.05) across all species within a specific placentation type (e.g., Hemochorial, Endotheliochorial, or Epitheliochorial) for a given cell-cell pair.
 
-Prepare two simple configuration files:
-1. 'cellpairs.txt': A single-column text file listing the specific cell-cell interactions you want to analyze (e.g., 'EVT|dM).
-2. 'groups.json': A JSON file defining your species groupings based on placentation type.
-*Example 'groups.json':*
+**Prepare two simple configuration files:**
+
+1. **'cellpairs.txt':** A single-column text file listing the specific cell-cell interactions you want to analyze (e.g., 'EVT|dM').
+2. **'groups.json':** A JSON file defining your species groupings based on placentation type.
+
+**Example 'groups.json':**
+```json
 {
-    "Hemo": ["H", "M", "MA"],
-    "Endo": ["SQ", "D"],
-    "Epi": ["S", "G", "Z"]
+  "Hemo": ["H", "M", "MA"],
+  "Endo": ["SQ", "D"],
+  "Epi": ["S", "G", "Z"]
 }
+```
 
-Script: scripts/05_filter_cpdb_results.py
+**Script:** `scripts/05_filter_cpdb_results.py`
 
-Usage:
-    python scripts/05_Filter_interactors.py <input_dir> <cellpairs.txt> <groups.json> <output_dir>
-Example: 
-    python scripts/05_Filter_interactors.py ./cpdb_outputs cellpairs.txt groups.json ./filtered_results
+**Usage:**
+```bash
+python scripts/05_Filter_interactors.py <input_dir> <cellpairs.txt> <groups.json> <output_dir>
+```
 
-Parameters:
+**Example:**
+```bash
+python scripts/05_Filter_interactors.py ./cpdb_outputs cellpairs.txt groups.json ./filtered_results
+```
 
-<input_dir>: The directory containing the CellPhoneDB output p-value files. The script expects files to be named as <species>-pvalues.txt (e.g., H-pvalues.txt).
-<cellpairs.txt>: A list of target cell-cell pairs.
-<groups.json>: The JSON configuration file mapping species abbreviations to their placentation groups.
-<output_dir>: The directory where the filtered results will be saved.
+**Parameters:**
+- **`<input_dir>`:** The directory containing the CellPhoneDB output p-value files. The script expects files to be named as `<species>-pvalues.txt` (e.g., `H-pvalues.txt`)
+- **`<cellpairs.txt>`:** A list of target cell-cell pairs
+- **`<groups.json>`:** The JSON configuration file mapping species abbreviations to their placentation groups
+- **`<output_dir>`:** The directory where the filtered results will be saved
 
-Output Files:
-The script generates CSV files named in the format <Group>-<CellPair>.result.csv (e.g., Hemo-EVT_dM.result.csv). Each file contains the highly conserved interacting pairs (interacting_pair, gene_a, gene_b) that passed the strict significance threshold across all species within that group.
+**Output Files:**
+The script generates CSV files named in the format `<Group>-<CellPair>.result.csv` (e.g., `Hemo-EVT_dM.result.csv`). Each file contains the highly conserved interacting pairs (`interacting_pair`, `gene_a`, `gene_b`) that passed the strict significance threshold across all species within that group.
 
-## Module2: Statistical Analysis of Escalation
-This module calculates representative expression values and tests the escalation hypothesis using phylogenetic trees. Petaurus breviceps is used as the outgroup. Taking the hemochorial placenta species as an example.
+## Module 2: Statistical Analysis of Escalation
+This module calculates representative expression values and tests the escalation hypothesis using phylogenetic trees. *Petaurus breviceps* is used as the outgroup. Taking the hemochorial placenta species as an example.
 
-### Step6: Extract Representative L-R Expression
+### Step 6: Extract Representative L-R Expression
 Extract the maximum average expression across all fetal cell types (ligands) and maternal cell types (receptors) for a given species. It also calculates the global Transcripts Per Million (TPM) statistics required for downstream z-score transformation.
 
-Script: scripts/06_Extract_LR_expr.r
+**Script:** `scripts/06_Extract_LR_expr.r`
 
-Usage:
-    Rscript scripts/06_Extract_LR_expr.r <data_dir> <lr_database> <output_dir> <species_list>
-Example:
-    Rscript scripts/06_Extract_LR_expr.r \
-    output/cpdb_input/ \
-    data/lr_database.csv \
-    output/lr_expression/ \
-    "H,M,MA,SQ,D,S,G,Z,W"
-    
+**Usage:**
+```bash
+Rscript scripts/06_Extract_LR_expr.r <data_dir> <lr_database> <output_dir> <species_list>
+```
 
-Parameters:
-<data_dir>: The path to the input files. For each species, we need the RDS file obtained from step2 and the metadata file obtained from step3(e.g.,M_converted.rds and M_meta.txt).
-<lr_database>: A reduced CellPhoneDB database file containing specific ligand-receptor pairs to be tested.
-<output_dir>: The directory where the extracted expression profiles will be saved.
-<species_list>: A list of species prefix, sepatared by commas(e.g., H,M,MA,SQ,D,S,G,Z,W).
+**Example:**
+```bash
+Rscript scripts/06_Extract_LR_expr.r \
+  output/cpdb_input/ \
+  data/lr_database.csv \
+  output/lr_expression/ \
+  "H,M,MA,SQ,D,S,G,Z,W"
+```
 
-Output Files:
-For each species provided in the <species_list>, this script generates 3 files in the output directory:
-1. <species>_tpm_stats.csv: Contains the global mean and standard deviation of log2-transformed TPM across all cells. This is essential for calculating zTPM in the next step to mitigate species-specific sequencing biases.
-2. <species>_ligand_expression.csv: Contains the representative TPM values for each ligand. This value is defined as the maximum average expression across all Fetal cell populations.
-3. <species>_receptor_expression.csv: Contains the representative TPM values for each receptor, defined as the maximum average expression across all Maternal cell populations.
+**Parameters:**
+- **`<data_dir>`:** The path to the input files. For each species, we need the RDS file obtained from Step 2 and the metadata file obtained from Step 3 (e.g., `M_converted.rds` and `M_meta.txt`)
+- **`<lr_database>`:** A reduced CellPhoneDB database file containing specific ligand-receptor pairs to be tested
+- **`<output_dir>`:** The directory where the extracted expression profiles will be saved
+- **`<species_list>`:** A list of species prefix, separated by commas (e.g., `H,M,MA,SQ,D,S,G,Z,W`)
 
-###  Step7: Regression & PIC Correction
-Tests the escalation hypothesis of fetal ligands and maternal receptors. It calculates the standardized expression (zTPM), performs standard linear regression (OLS), and applies Phylogenetically Independent Contrasts (PIC) to correct for shared evolutionary history.Ligand-receptor pairs with a PIC P-value < 0.05 and a significant positive (slope > 1) or negative (slope < -1) regression slope indicate symmetric or asymmetric escalation, respectively.
+**Output Files:**
+For each species provided in the `<species_list>`, this script generates 3 files in the output directory:
 
-Usage:
-    # Run the script to perform OLS and PIC regression
-    Rscript scripts/07_Escalation_analysis.r <input_dir> <tree.nwk> <species_map_string> <output_dir>
-Example:
-    Rscript scripts/07_Escalation_analysis.r \
-    output/lr_expression/ \
-    data/species_tree.nwk \
-    "H=Homo_sapiens,MA=Macaca_fascicularis,M=Mus_musculus,W=Petaurus_breviceps" \
-    output/escalation_results/
+1. **`<species>_tpm_stats.csv`:** Contains the global mean and standard deviation of log2-transformed TPM across all cells. This is essential for calculating zTPM in the next step to mitigate species-specific sequencing biases.
+2. **`<species>_ligand_expression.csv`:** Contains the representative TPM values for each ligand. This value is defined as the maximum average expression across all Fetal cell populations.
+3. **`<species>_receptor_expression.csv`:** Contains the representative TPM values for each receptor, defined as the maximum average expression across all Maternal cell populations.
 
-Parameters:
-<input_dir>: The directory containing the extracted ligand/receptor expressions and TPM stats generated from the previous step.
-<tree.nwk>: Path to the time-calibrated phylogenetic tree file in Newick format.
-<species_map_string>: A comma-separated string mapping your species abbreviations to their full scientific names exactly as they appear on the tree tips (e.g., "H=Homo_sapiens,MA=Macaca_fascicularis,M=Mus_musculus,W=Petaurus_breviceps").
-<output_dir>: The directory where the analysis results will be saved.
+### Step 7: Regression & PIC Correction
+Tests the escalation hypothesis of fetal ligands and maternal receptors. It calculates the standardized expression (zTPM), performs standard linear regression (OLS), and applies Phylogenetically Independent Contrasts (PIC) to correct for shared evolutionary history. Ligand-receptor pairs with a PIC P-value < 0.05 and a significant positive (slope > 1) or negative (slope < -1) regression slope indicate symmetric or asymmetric escalation, respectively.
 
-Output Files:
+**Script:** `scripts/07_Escalation_analysis.r`
+
+**Usage:**
+```bash
+# Run the script to perform OLS and PIC regression
+Rscript scripts/07_Escalation_analysis.r <input_dir> <tree.nwk> <species_map_string> <output_dir>
+```
+
+**Example:**
+```bash
+Rscript scripts/07_Escalation_analysis.r \
+  output/lr_expression/ \
+  data/species_tree.nwk \
+  "H=Homo_sapiens,MA=Macaca_fascicularis,M=Mus_musculus,W=Petaurus_breviceps" \
+  output/escalation_results/
+```
+
+**Parameters:**
+- **`<input_dir>`:** The directory containing the extracted ligand/receptor expressions and TPM stats generated from the previous step
+- **`<tree.nwk>`:** Path to the time-calibrated phylogenetic tree file in Newick format
+- **`<species_map_string>`:** A comma-separated string mapping your species abbreviations to their full scientific names exactly as they appear on the tree tips (e.g., `"H=Homo_sapiens,MA=Macaca_fascicularis,M=Mus_musculus,W=Petaurus_breviceps"`)
+- **`<output_dir>`:** The directory where the analysis results will be saved
+
+**Output Files:**
 This script generates 2 files:
-1. 'Escalation_Analysis_Table.csv': A combined table containing the OLS and PIC regression statistics (intercept, slope, p-value, R-squared), and the standardized zTPM expression values across all included species.
-2. 'Coevolution_Volcano_Plot.pdf': The volcano plot visualizing the co-evolutionary landscape. The X-axis represents the OLS regression slope, and the Y-axis represents the -log10(PIC P-value). Significant symmetric and asymmetric escalation pairs are highlighted in red and annotated.
+
+1. **`Escalation_Analysis_Table.csv`:** A combined table containing the OLS and PIC regression statistics (intercept, slope, p-value, R-squared), and the standardized zTPM expression values across all included species.
+2. **`Coevolution_Volcano_Plot.pdf`:** The volcano plot visualizing the co-evolutionary landscape. The X-axis represents the OLS regression slope, and the Y-axis represents the -log10(PIC P-value). Significant symmetric and asymmetric escalation pairs are highlighted in red and annotated.
