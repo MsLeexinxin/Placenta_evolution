@@ -1,122 +1,70 @@
-Cross-Species Single-Cell Expression Analysis Pipeline: From Expression Data to Phylogenetic Trees
+# Cross-Species Single-Cell Expression Analysis Pipeline: From Expression Data to Phylogenetic Trees
 
+This README outlines a bioinformatics pipeline for analyzing cross-species single-cell gene expression data. The pipeline transforms raw single-cell expression data (`.rds` format) into a format suitable for generating a phylogenetic tree based on expression profiles. The tree illustrates the evolutionary relationships between nine different species at the cellular level.
 
-
-This README outlines a bioinformatics pipeline for analyzing cross-species single-cell gene expression data. The pipeline transforms raw single-cell expression data (.rds format) into a format suitable for generating a phylogenetic tree based on expression profiles. The tree illustrates the evolutionary relationships between nine different species at the cellular level.
-
-
-
-Pipeline Overview
-
-
+## Pipeline Overview
 
 The workflow consists of two main computational steps:
 
-1\.  Calculate CPM (Counts Per Million) Matrix: Transform raw gene counts in each species' single-cell dataset into a normalized CPM matrix.
+1. **Calculate CPM (Counts Per Million) Matrix:** Transform raw gene counts in each species' single-cell dataset into a normalized CPM matrix.
+2. **Cross-Species Matrix Construction and Phylogenetic Tree Generation:** For a specific cell type, create a unified expression matrix containing data from all nine species, and then compute a phylogenetic tree based on expression similarities.
 
-2\.  Cross-Species Matrix Construction and Phylogenetic Tree Generation: For a specific cell type, create a unified expression matrix containing data from all nine species, and then compute a phylogenetic tree based on expression similarities.
-
-
-
-Step 1: Calculate CPM Matrices for Each Species
-
-
+## Step 1: Calculate CPM Matrices for Each Species
 
 The first step normalizes the expression data for each species individually. This step prepares the data for cross-species comparison by mitigating differences in sequencing depth.
 
+**Script:** `cal.CPM.nosample.r`
 
+**Purpose:** This R script reads a single-cell expression dataset (in `.rds` format) and calculates the CPM (Counts Per Million) values for all genes in all cells. The CPM normalization adjusts for library size, making expression levels comparable across cells within the same species.
 
-Script: cal.CPM.nosample.r
+**Usage:**
 
-Purpose: This R script reads a single-cell expression dataset (in .rds format) and calculates the CPM (Counts Per Million) values for all genes in all cells. The CPM normalization adjusts for library size, making expression levels comparable across cells within the same species.
+```bash
+# Run the script for each species' .rds file
+Rscript cal.CPM.nosample.r <input.rds> <output_prefix>
+```
 
+**Parameters:**
 
+- **`<input.rds>`:** The path to the input RDS file containing the single-cell expression data (e.g., `Human.anno.rds`).
+- **`<output_prefix>`:** A base name for the output files. The script will generate files with this prefix (e.g., `Human`).
 
-Usage:
+**Output:**
 
-\# Run the script for each species' .rds file
+The script generates a tab-separated file named `<output_prefix>.CPM.txt` (e.g., `Human.CPM.txt`). This file contains the CPM-normalized expression matrix for all cells in the input dataset.
 
-Rscript cal.CPM.nosample.r <input.rds> <output\_prefix>
+**Perform this step for the expression data of all nine species, producing nine distinct CPM files.**
 
-
-
-
-
-Parameters:
-
-•   <input.rds>: The path to the input RDS file containing the single-cell expression data (e.g., Human.anno.rds).
-
-
-
-•   <output\_prefix>: A base name for the output files. The script will generate files with this prefix (e.g., Human).
-
-
-
-Output:
-
-The script generates a tab-separated file named <output\_prefix>.CPM.txt (e.g.,Human.CPM.txt). This file contains the CPM-normalized expression matrix for all cells in the input dataset.
-
-
-
-Perform this step for the expression data of all nine species, producing nine distinct CPM files.
-
-
-
-Step 2: Build Cross-Species Expression Matrix and Generate Phylogenetic Tree
-
-
+## Step 2: Build Cross-Species Expression Matrix and Generate Phylogenetic Tree
 
 The second step integrates data from all species for a specific cell type and performs a comparative analysis to infer evolutionary relationships.
 
+**Script:** `plot.spearman.nwk.rootbootstrap.normalize.r`
 
+**Purpose:** This core R script calculates a similarity matrix (likely using Spearman correlation) between species based on their aggregated cellular expression profiles. This similarity matrix is then used to construct a phylogenetic tree (Newick format, `.nwk`), with bootstrap support values to assess branch reliability.
 
-Script: plot.spearman.nwk.rootbootstrap.normalize.r
+**Usage:**
 
-Purpose: This core R script performs the following functions: 
+```bash
+Rscript plot.spearman.nwk.rootbootstrap.normalize.r <input_matrix.txt> <output_prefix>
+```
 
-Computes Similarity and Builds Tree: It calculates a similarity matrix (likely using Spearman correlation) between species based on their aggregated cellular expression profiles. This similarity matrix is then used to construct a phylogenetic tree (Newick format, .nwk), with bootstrap support values to assess branch reliability.
+**Parameters:**
 
+- **`<input_matrix.txt>`:** The path to the combined CPM matrix file for the target cell type across all nine species. This file is the product of integrating the individual species' CPM files (e.g., `9species.cell_type1.CPM.txt`).
+- **`<output_prefix>`:** A base name for all output files generated by this script (e.g., `9species.cell_type1.CPM_out`).
 
-
-Usage:
-
-Rscript plot.spearman.nwk.rootbootstrap.normalize.r <input\_matrix.txt> <output\_prefix>
-
-
-
-
-
-Parameters:
-
-•   <input\_matrix.txt>: The path to the combined CPM matrix file for the target cell type across all nine species. This file is the product of integrating the individual species' CPM files. (e.g., 9species.cell\_type1.CPM.txt).
-
-
-
-•   <output\_prefix>: A base name for all output files generated by this script (e.g., 9species.cell\_type1.CPM\_out).
-
-
-
-Output Files:
+**Output Files:**
 
 The script generates the following output files:
 
-<output\_prefix>\_tree.pdf​ - Phylogenetic tree visualization (PDF format)
+1. **`<output_prefix>_tree.pdf`** - Phylogenetic tree visualization (PDF format)
+2. **`<output_prefix>_tree.nwk`** - Phylogenetic tree in Newick format
+3. **`<output_prefix>_branch_lengths_raw_and_normalized.txt`** - Raw and normalized branch lengths with bootstrap support values
+4. **`<output_prefix>_spearman.rooted.boot.pdf`** - Additional visualization of the rooted phylogenetic tree with bootstrap values
 
-<output\_prefix>\_tree.nwk​ - Phylogenetic tree in Newick format
+## Workflow Summary
 
-<output\_prefix>\_branch\_lengths\_raw\_and\_normalized.txt​ - Raw and normalized branch lengths with bootstrap support values
-
-<output\_prefix>\_spearman.rooted.boot.pdf​ - Additional visualization of the rooted phylogenetic tree with bootstrap values
-
-
-
-Workflow Summary
-
-
-
-1\.  For each of the nine species, run Step 1 to generate a species-specific CPM matrix.
-
-2\.  For each cell type of interest, prepare a combined CPM matrix (9species.<cell\_type>.CPM.txt) that integrates data from all nine species' Step 1 outputs. (Note: The process of creating this combined file from the nine individual files is a prerequisite step not detailed in the provided commands but implied by the input.)
-
-3\.  Run Step 2 for each combined cell-type matrix to generate a phylogenetic tree depicting the relationships between the nine species based on the expression profile of that specific cell type.
-
+1. For each of the nine species, run **Step 1** to generate a species-specific CPM matrix.
+2. For each cell type of interest, prepare a combined CPM matrix (`9species.<cell_type>.CPM.txt`) that integrates data from all nine species' Step 1 outputs. *(Note: The process of creating this combined file from the nine individual files is a prerequisite step not detailed in the provided commands but implied by the input.)*
+3. Run **Step 2** for each combined cell-type matrix to generate a phylogenetic tree depicting the relationships between the nine species based on the expression profile of that specific cell type.
